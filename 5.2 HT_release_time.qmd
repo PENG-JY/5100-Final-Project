@@ -1,0 +1,121 @@
+---
+title: "Hypothesis Test: Release Time Effect on Game Sales"
+format: 
+    html:
+        embed-resources: true
+---
+
+```{r}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+# Load the cleaned dataset
+df <- read.csv('../cleaned_game.csv')
+df$release_date <- as.Date(df$release_date)
+# Extract month
+Sys.setlocale("LC_TIME", "English")
+df <- df |> mutate(month = month(release_date, label = TRUE)) |> filter(!is.na(month))
+# Group by month and calculate average sales
+monthly_sales <- df |> group_by(month) |> summarize(avg_sales = mean(predict_sales, na.rm = TRUE), .groups = "drop")
+# Visualization
+bar_plot <- ggplot(monthly_sales, aes(x = month, y = avg_sales)) +
+  geom_bar(stat = "identity", fill = '#82fffe', color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Monthly Sales (in millions)",
+    x = "Month",
+    y = "Total Sales"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 30),
+    axis.text.x = element_text(hjust = 1, size=18),
+    axis.text.y = element_text(size=18),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold")
+  )
+print(bar_plot)
+ggsave("ht_release_time_bar.png", bar_plot, width = 12, height = 8, dpi = 300)
+
+  # black bg
+bar_plot_black <- ggplot(monthly_sales, aes(x = month, y = avg_sales)) +
+  geom_bar(stat = "identity", fill = '#82fffe', color = "white") +
+  theme_minimal() +
+  labs(
+    title = "Monthly Sales (in millions)",
+    x = "Month",
+    y = "Total Sales"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 30),
+    axis.text.x = element_text(hjust = 1, color = "white", size=18),
+    axis.text.y = element_text(color = "white", size=18),
+    axis.title.x = element_text(color = "white", size = 22, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 22, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25)
+  )
+print(bar_plot)
+ggsave("ht_release_time_bar_black.png", bar_plot_black, width = 12, height = 8, dpi = 300)
+
+
+# Permutation test
+n_permutations <- 10000
+observed_variance <- var(monthly_sales$avg_sales)
+print(observed_variance)
+perm_variances <- replicate(n_permutations, {
+  permuted_data <- df |> mutate(month = sample(month))
+  permuted_monthly_sales <- permuted_data |> group_by(month) |> summarize(avg_sales = mean(predict_sales, na.rm = TRUE), .groups = "drop")
+  var(permuted_monthly_sales$avg_sales)
+})
+head(perm_variances)
+# p-value
+p_value <- mean(perm_variances >= observed_variance)
+print(p_value)
+# null distribution
+null_dist <- ggplot(data.frame(perm_variances), aes(x = perm_variances)) +
+  geom_histogram(bins = 30, fill = "#82fffe", color = "white", aes(y = after_stat(density))) +
+  geom_vline(xintercept = observed_variance, color = "red", linetype = "dashed", linewidth = 1) +
+  labs(
+    title = "Null Distribution",
+    x = "Variance",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 30),
+    axis.text.x = element_text(hjust = 1, size=18),
+    axis.text.y = element_text(size=18),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"))
+print(null_dist)
+ggsave("ht_release_time_null.png", null_dist, width = 12, height = 8, dpi = 300)
+
+ #black bg
+null_dist_black <- ggplot(data.frame(perm_variances), aes(x = perm_variances)) +
+  geom_histogram(bins = 30, fill = "#82fffe", color = "white", aes(y = after_stat(density))) +
+  geom_vline(xintercept = observed_variance, color = "red", linetype = "dashed", linewidth = 1) +
+  labs(
+    title = "Null Distribution",
+    x = "Variance",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 30),
+    axis.text.x = element_text(hjust = 1, color = "white", size=18),
+    axis.text.y = element_text(color = "white", size=18),
+    axis.title.x = element_text(color = "white", size = 22, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 22, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25))
+print(null_dist)
+ggsave("ht_release_time_null_black.png", null_dist_black, width = 12, height = 8, dpi = 300)
+```

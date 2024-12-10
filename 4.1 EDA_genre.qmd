@@ -1,0 +1,314 @@
+---
+title: "EDA: Popular Game Genre Trends"
+format: 
+    html:
+        embed-resources: true
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(cowplot)
+library(viridis)
+# Load the cleaned dataset
+df <- read.csv('../cleaned_game.csv')
+
+# Video Game Genre Trends Over Time: Supply
+df$release_date <- as.Date(df$release_date)
+ # Filter from 1995 to 2018
+df <- df |> filter(release_date > as.Date("1995-01-01")) |> filter(release_date < as.Date("2019-01-01")) |> mutate(year = floor_date(release_date, unit = "year"))
+ # group by year and genre
+genre_trend <- df |>
+  group_by(year, genre) |>
+  summarize(count = n(), .groups = "drop")
+
+  # Facet wrap
+    # average line
+average_line <- genre_trend |>
+  group_by(year) |>
+  summarize(avg_count = sum(count) / n_distinct(genre))
+genre_trend <- left_join(genre_trend, average_line, by = "year")
+    # facet plot
+facet_plot <- ggplot(genre_trend, aes(x = year, y = count, color = genre)) +
+  geom_line(size = 1) +
+  geom_line(data = average_line, aes(x = year, y = avg_count), color = "red", linetype = 'dashed', size = 0.5) +
+  facet_wrap(~genre, scales = "free_y", ncol = 4) +
+  scale_color_viridis(discrete = TRUE, option = "cividus") +
+  labs(
+    title = "Release Trends of Each Game Genre Over Time",
+    x = "Released Year",
+    y = "Number of Games Released"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    strip.text = element_text(size = 10, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.x = element_text(size = 14, face = "bold"),
+    axis.title.y = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+facet_plot <- ggdraw() +
+  draw_plot(facet_plot) +
+  draw_label(
+    "Red line = Average",
+    x = 0.98, y = 0.02,
+    hjust = 1, vjust = 0,
+    fontface = "italic", size = 12, color = "red"
+  )
+print(facet_plot)
+ggsave("eda_genre_supply_facet.png", facet_plot, width = 12, height = 8, dpi = 300)
+  # Black bg version
+facet_plot_black <- ggplot(genre_trend, aes(x = year, y = count, color = genre)) +
+  geom_line(size = 1) +
+  geom_line(data = average_line, aes(x = year, y = avg_count), color = "red", linetype = 'dashed', size = 0.5) +
+  facet_wrap(~genre, scales = "free_y", ncol = 4) +
+  scale_color_viridis(discrete = TRUE, option = "cividus") +
+  labs(
+    title = "Release Trends of Each Game Genre Over Time",
+    x = "Released Year",
+    y = "Number of Games Released"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 18),
+    strip.text = element_text(size = 10, face = "bold", color = "white"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "white"),
+    axis.text.y = element_text(color = "white"),
+    axis.title.x = element_text(color = "white", size = 14, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 14, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    legend.position = "none",
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25)
+  )
+
+# Draw the plot and add a label
+facet_plot_black <- ggdraw() +
+  draw_plot(facet_plot_black) +
+  draw_label(
+    "Red line = Average",
+    x = 0.98, y = 0.02,
+    hjust = 1, vjust = 0,
+    fontface = "italic", size = 12, color = "red"
+  )
+
+print(facet_plot_black)
+ggsave("eda_genre_supply_facet_black.png", facet_plot_black, width = 12, height = 8, dpi = 300)
+
+ # stacked plot on top genres
+    # Select top genres
+top_genres <- c("Action", "Platform", 'Racing', 'Role-Playing', 'Shooter', 'Sports')
+genre_trend <- genre_trend |>
+  mutate(genre = ifelse(genre %in% top_genres, genre, "Others"))
+genre_trend <- genre_trend |>
+  group_by(year) |>
+  mutate(percentage = count / sum(count) * 100)
+    # Plot stacked bar chart
+genre_colors <- viridis::viridis(length(top_genres)+1)
+stacked_plot <- ggplot(genre_trend, aes(x = year, y = percentage, fill = genre)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = genre_colors) +
+  labs(
+    title = "Top Released Game Genres Over Time",
+    x = "Released Year",
+    y = "Percentage of Games Released",
+    fill = "Genre"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 26),
+    axis.text.x = element_text(hjust = 1, size=14),
+    axis.text.y = element_text(size=14),
+    legend.text = element_text(size=18),
+    axis.title.x = element_text(size = 18, face = "bold"),
+    axis.title.y = element_text(size = 18, face = "bold")
+  )
+print(stacked_plot)
+ggsave("eda_genre_supply_stacked.png", stacked_plot, width = 12, height = 8, dpi = 300)
+  # Black bg version
+stacked_plot_black <- ggplot(genre_trend, aes(x = year, y = percentage, fill = genre)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = genre_colors) +
+  labs(
+    title = "Top Released Game Genres Over Time",
+    x = "Released Year",
+    y = "Percentage of Games Released",
+    fill = "Genre"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 26),
+    axis.text.x = element_text(hjust = 1, color = "white", size=14),
+    axis.text.y = element_text(color = "white", size=14),
+    legend.text = element_text(color = "white", size=18),
+    axis.title.x = element_text(color = "white", size = 18, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 18, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25)
+  )
+
+# Print and save the plot
+print(stacked_plot_black)
+ggsave("eda_genre_supply_stacked_black.png", stacked_plot_black, width = 12, height = 8, dpi = 300)
+
+
+# Video Game Genre Trends Over Time: Demand
+ # group by year and genre
+genre_trend <- df |>
+  group_by(year, genre) |>
+  summarize(genre_sales=sum(predict_sales), .groups = "drop")
+
+  # Facet wrap
+    # average line
+average_line <- genre_trend |>
+  group_by(year) |>
+  summarize(avg_sales = sum(genre_sales) / n_distinct(genre))
+genre_trend <- left_join(genre_trend, average_line, by = "year")
+    # facet plot
+facet_plot <- ggplot(genre_trend, aes(x = year, y = genre_sales, color = genre)) +
+  geom_line(size = 1) +
+  geom_line(data = average_line, aes(x = year, y = avg_sales), color = "red", linetype = 'dashed', size = 0.5) +
+  facet_wrap(~genre, scales = "free_y", ncol = 4) +
+  scale_color_viridis(discrete = TRUE, option = "cividus") +
+  labs(
+    title = "Sales Trends of Each Game Genre Over Time",
+    x = "Released Year",
+    y = "Game Sales (in millions)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 18),
+    strip.text = element_text(size = 10, face = "bold", color = "white"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.x = element_text(size = 14, face = "bold"),
+    axis.title.y = element_text(size = 14, face = "bold"),
+    legend.position = "none"
+  )
+facet_plot <- ggdraw() +
+  draw_plot(facet_plot) +
+  draw_label(
+    "Red line = Average",
+    x = 0.98, y = 0.02,
+    hjust = 1, vjust = 0,
+    fontface = "italic", size = 12, color = "red"
+  )
+print(facet_plot)
+ggsave("eda_genre_demand_facet.png", facet_plot, width = 12, height = 8, dpi = 300)
+
+  # Black bg version
+facet_plot_black <- ggplot(genre_trend, aes(x = year, y = genre_sales, color = genre)) +
+  geom_line(size = 1) +
+  geom_line(data = average_line, aes(x = year, y = avg_sales), color = "red", linetype = 'dashed', size = 0.5) +
+  facet_wrap(~genre, scales = "free_y", ncol = 4) +
+  scale_color_viridis(discrete = TRUE, option = "cividus") +
+  labs(
+    title = "Sales Trends of Each Game Genre Over Time",
+    x = "Released Year",
+    y = "Game Sales (in millions)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 18),
+    strip.text = element_text(size = 10, face = "bold", color = "white"),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "white"),
+    axis.text.y = element_text(color = "white"),
+    axis.title.x = element_text(color = "white", size = 14, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 14, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    legend.position = "none",
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25)
+  )
+
+# Draw the plot and add a label
+facet_plot_black <- ggdraw() +
+  draw_plot(facet_plot_black) +
+  draw_label(
+    "Red line = Average",
+    x = 0.98, y = 0.02,
+    hjust = 1, vjust = 0,
+    fontface = "italic", size = 12, color = "red"
+  )
+
+print(facet_plot_black)
+ggsave("eda_genre_demand_facet_black.png", facet_plot_black, width = 12, height = 8, dpi = 300)
+
+
+ # stacked plot on top genres
+    # Select top genres
+top_genres <- c("Action", 'Racing', 'Role-Playing', 'Shooter', 'Sports')
+genre_trend <- genre_trend |>
+  mutate(genre = ifelse(genre %in% top_genres, genre, "Others"))
+genre_trend <- genre_trend |>
+  group_by(year) |>
+  mutate(percentage = genre_sales / sum(genre_sales) * 100)
+    # Plot stacked bar chart
+genre_colors <- viridis::viridis(length(top_genres)+1)
+stacked_plot <- ggplot(genre_trend, aes(x = year, y = percentage, fill = genre)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = genre_colors) +
+  labs(
+    title = "Top Sales of Game Genres Over Time",
+    x = "Released Year",
+    y = "Percentage of Game Sales",
+    fill = "Genre"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 26),
+    axis.text.x = element_text(hjust = 1, size=14),
+    axis.text.y = element_text(size=14),
+    legend.text = element_text(size=18),
+    axis.title.x = element_text(size = 18, face = "bold"),
+    axis.title.y = element_text(size = 18, face = "bold")
+  )
+print(stacked_plot)
+ggsave("eda_genre_demand_stacked.png", stacked_plot, width = 12, height = 8, dpi = 300)
+
+  # Black bg version
+stacked_plot_black <- ggplot(genre_trend, aes(x = year, y = percentage, fill = genre)) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(values = genre_colors) +
+  labs(
+    title = "Top Sales of Game Genres Over Time",
+    x = "Released Year",
+    y = "Percentage of Game Sales",
+    fill = "Genre"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, color = "white", face = "bold", size = 26),
+    axis.text.x = element_text(hjust = 1, color = "white", size=14),
+    axis.text.y = element_text(color = "white", size=14),
+    legend.text = element_text(color = "white", size=18),
+    axis.title.x = element_text(color = "white", size = 18, face = "bold"),
+    axis.title.y = element_text(color = "white", size = 18, face = "bold"),
+    plot.background = element_rect(fill = "black"),
+    panel.background = element_rect(fill = "black"),
+    strip.background = element_rect(fill = "black"),
+    
+    # Grid lines adjustments
+    panel.grid.major = element_line(color = "gray20", size = 0.5), 
+    panel.grid.minor = element_line(color = "gray20", size = 0.25)
+  )
+
+# Print and save the plot
+print(stacked_plot_black)
+ggsave("eda_genre_demand_stacked_black.png", stacked_plot_black, width = 12, height = 8, dpi = 300)
+
+```
