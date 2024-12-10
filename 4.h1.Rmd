@@ -1,0 +1,82 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+df = read.csv("cleaned_game.csv")
+df
+```
+```{r}
+colnames(df)
+df
+```
+
+```{r}
+#null hypothesis: no significant difference between two's sales
+df_series = df[,c("title","console","series","critic_score","predict_sales")]
+df_series_1 = df_series[df_series$"series"==1, c("title","predict_sales")]
+df_series_0 = df_series[df_series$"series"==0, c("title","predict_sales")]
+library(dplyr)
+
+df_series_1 <- df_series_1 %>%
+  group_by(title) %>%
+  summarise(total_sales = sum(predict_sales, na.rm = TRUE))
+df_series_0 <- df_series_0 %>%
+  group_by(title) %>%
+  summarise(total_sales = sum(predict_sales, na.rm = TRUE))
+df_series_1
+t.test(df_series_1$total_sales, df_series_0$total_sales, alt="greater")
+#the result shows there is significant different between series game sales and non series game sale, thus reject hypothesis that there is no significant different between two
+```
+```{r}
+
+```
+
+```{r}
+#null hypothesis: no significant difference between two's critic score
+df_series = df[,c("title","console","series","critic_score")]
+df_series_1 = df_series[df_series$"series"==1, c("title","critic_score")]
+df_series_0 = df_series[df_series$"series"==0, c("title","critic_score")]
+library(dplyr)
+
+df_series_1 <- df_series_1 %>%
+  group_by(title) %>%
+  summarise(critic_score = mean(critic_score, na.rm = TRUE))
+df_series_0 <- df_series_0 %>%
+  group_by(title) %>%
+  summarise(critic_score = mean(critic_score, na.rm = TRUE))
+t.test(df_series_1$critic_score, df_series_0$critic_score, alt="greater")
+#the result shows there is significant different between series game critic score and non series game critic score, thus reject hypothesis that there is no significant different between two
+
+```
+```{r}
+#par(bg = "black")
+df_series = df[,c("title","console","series","critic_score", "predict_sales")]
+df_series_1 = df_series[df_series$"series"==1, c("title","critic_score", "predict_sales")]
+df_series_0 = df_series[df_series$"series"==0, c("title","critic_score", "predict_sales")]
+plot(df_series_1$critic_score, df_series_1$predict_sale, 
+     main = "Scatter Plot of score and sale for two type of games", 
+     xlab = "critic_score", 
+     ylab = "predict_sale", 
+     col = "blue", 
+     pch = 16,
+     bg = "white",
+     col.axis = "black", 
+     col.lab = "black", 
+     col.main = "black")
+points(df_series_0$critic_score, df_series_0$predict_sales, 
+       col = "red", 
+       pch = 17)
+legend("topright", legend = c("Series game", "Standalone game"), 
+       col = c("blue", "red"), 
+       pch = c(16, 17), 
+       text.col = "black", )
+       #bg = "black") 
+
+
+
+
+```
+
+

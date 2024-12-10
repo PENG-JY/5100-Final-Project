@@ -1,0 +1,134 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+`
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+game <- read.csv('vgchartz-2024.csv', stringsAsFactors = FALSE)
+print(dim(game))
+
+game <- game %>% drop_na(critic_score, total_sales)
+print(dim(game))
+
+game$developer <- lapply(game$developer, function(dev) {
+  if (!is.na(dev) && grepl(" /", dev)) {
+    strsplit(dev, " /")[[1]]
+  } else {
+    list(dev)
+  }
+})
+
+
+game <- game %>%
+  mutate(
+    na_sales = replace_na(na_sales, 0),
+    jp_sales = replace_na(jp_sales, 0),
+    pal_sales = replace_na(pal_sales, 0),
+    other_sales = replace_na(other_sales, 0)
+  )
+```
+
+```{r}
+game$title_dict_score <- lapply(game$title, function(title) {
+  if (!is.na(title)) {
+    strsplit(title, " ")[[1]]
+  } else {
+    list()
+  }
+})
+
+game$series <- 0
+
+for (x in seq_len(nrow(game))) {
+  current_title_score <- game$title_dict_score[[x]]
+  check_count <- 0
+  
+  for (y in seq_len(nrow(game))) {
+    if (x == y) next  
+    
+    other_title_score <- game$title_dict_score[[y]]
+    match_count <- 0
+    
+    for (word in current_title_score) {
+      if (word %in% other_title_score) {
+        match_count <- match_count + 1
+      } else {
+        match_count <- 0
+      }
+      
+      if (length(current_title_score) > 2 && match_count >= 2) {
+        if (!identical(current_title_score, other_title_score)) {
+          if (game$publisher[x] == game$publisher[y]) {
+            game$series[x] <- 1
+            break
+          }
+        }
+      }
+      
+      if (length(current_title_score) <= 2 && match_count >= 1) {
+        if (!identical(current_title_score, other_title_score)) {
+          if (game$publisher[x] == game$publisher[y]) {
+            game$series[x] <- 1
+            break
+          }
+        }
+      }
+    }
+    if (game$series[x] == 1) break
+    
+  }
+}
+for (x in seq_len(nrow(game))) {
+  current_title_score <- game$title_dict_score[[x]]
+  for (word in current_title_score){
+if (grepl(":", word) || grepl("FIFA", word)|| grepl("victoria", word)||
+          grepl("Civilization", word)|| grepl("Fallout", word)|| grepl("2", word)
+          || grepl("3", word)|| grepl("4", word)|| grepl("II", word)|| grepl("III", word)){
+        game$series[x] <- 1
+}
+  }
+}
+head(game)
+
+```
+```{r}
+library(lubridate)
+game$release_date <- as.Date(game$release_date, format = "%Y-%m-%d")
+game$last_update <- as.Date(game$last_update, format = "%Y-%m-%d")
+game$release_year <- as.numeric(difftime(game$last_update,game$release_date,units = "day"))/365
+game
+```
+
+```{r}
+for (x in seq_len(nrow(game))) {
+  if (is.na(game$release_year[x])) {
+    game$predict_sales[x] <- 0.95 * game$total_sales[x]
+  } else if (game$release_year[x] < 0.08) {
+    game$predict_sales[x] <- -1
+  } else if (game$release_year[x] >= 0.08 && game$release_year[x] < 0.24) {
+    game$predict_sales[x] <- 1.5 * game$total_sales[x]
+  } else if (game$release_year[x] >= 0.24 && game$release_year[x] < 1) {
+    game$predict_sales[x] <- 1.1 * game$total_sales[x]
+  } else if (game$release_year[x] > 3) {
+    game$predict_sales[x] <- 0.95 * game$total_sales[x]
+  } else {
+    game$predict_sales[x] <- game$total_sales[x]
+  }
+}
+game <- game[game$predict_sales != -1, ]
+game
+```
+
+```{r}
+game$developer <- sapply(game$developer, function(x) paste(x, collapse = " / "))
+game$title_dict_score <- sapply(game$title_dict_score, function(x) paste(x, collapse = " / "))
+
+write.csv(game,"cleaned_game.csv", row.names = FALSE)
+
+```
