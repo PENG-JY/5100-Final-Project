@@ -1,0 +1,249 @@
+---
+title: "Regression"
+author: Jiayi Peng
+format:
+  html:
+    embed-resources: true
+    toc: true
+    math: true
+---
+
+
+```{r}
+df <- read.csv('D:/5100/final/cleaned_game.csv', stringsAsFactors = FALSE)
+print(head(df))
+```
+
+```{r}
+library(lubridate)
+
+df$release_year <- year(ymd(df$release_date))
+
+print(head(df))
+```
+
+## Introducing a Decay Factor: Adjusting Normalized Annual Sales
+
+```{r}
+library(lubridate)
+
+crawl_date <- as.Date("2024-11-10")
+
+df$release_date <- as.Date(df$release_date)
+
+df$time_since_release_years <- as.numeric(difftime(crawl_date, df$release_date, units = "days")) / 365
+
+k <- 0.1
+df$decay_factor <- exp(k * df$time_since_release_years)
+
+df$normalized_annual_sales <- df$total_sales / (df$time_since_release_years * df$decay_factor)
+
+print(head(df[, c("title", "release_date", "total_sales", "time_since_release_years", "normalized_annual_sales")]))
+```
+
+## Computing Regional Sales Ratios, creating a High-Score Indicator, filtering Valid Data , aggregating Low-Frequency Genres & displaying the Dataset
+
+```{r}
+library(dplyr)
+df <- df %>%
+  mutate(
+    na_annual_sales = na_sales / time_since_release_years,
+    jp_annual_sales = jp_sales / time_since_release_years,
+    pal_annual_sales = pal_sales / time_since_release_years,
+    other_annual_sales = other_sales / time_since_release_years,
+  )
+
+df <- df %>%
+  mutate(
+    na_sales_ratio = na_annual_sales / normalized_annual_sales,
+    jp_sales_ratio = jp_annual_sales / normalized_annual_sales,
+    pal_sales_ratio = pal_annual_sales / normalized_annual_sales,
+    other_sales_ratio = other_annual_sales / normalized_annual_sales
+  )
+
+df <- df %>%
+  mutate(
+    High_Score = ifelse(critic_score > 8, 1, 0)
+  )
+
+df <- df %>%
+  filter(!is.na(total_sales), total_sales > 0)
+```
+
+```{r}
+print(head(df, n = 10))
+```
+
+```{r}
+top_genres <- names(sort(table(df$genre), decreasing = TRUE)[1:5])
+df$genre <- ifelse(df$genre %in% top_genres, df$genre, "Other")
+
+df$genre <- as.factor(df$genre)
+```
+
+```{r}
+df <- df %>% filter(!is.na(na_sales_ratio))
+```
+
+## summary
+
+```{r}
+summary(df$High_Score)
+summary(df$na_sales_ratio)
+
+summary(df$critic_score)
+summary(df$na_sales_ratio)
+
+summary(df$genre)
+
+```
+
+## remove outliers
+
+```{r}
+remove_outliers_multiple <- function(data, columns) {
+  for (column in columns) {
+    Q1 <- quantile(data[[column]], 0.25, na.rm = TRUE)
+    Q3 <- quantile(data[[column]], 0.75, na.rm = TRUE)
+    IQR <- Q3 - Q1
+    lower_bound <- Q1 - 1.5 * IQR
+    upper_bound <- Q3 + 1.5 * IQR
+
+    data <- data[data[[column]] >= lower_bound & data[[column]] <= upper_bound, ]
+  }
+  return(data)
+}
+
+df1_cleaned <- remove_outliers_multiple(df, c("normalized_annual_sales", "critic_score"))
+
+nrow(df1_cleaned)
+```
+
+## Convert to time series
+
+```{r}
+library(dplyr)
+
+df_time_series <- df1_cleaned %>%
+  group_by(release_year) %>%
+  summarise(
+    mean_score = mean(critic_score, na.rm = TRUE), 
+    total_sales = mean(normalized_annual_sales, na.rm = TRUE), 
+    na_sales = mean(na_sales_ratio, na.rm = TRUE),
+    jp_sales = mean(jp_sales_ratio, na.rm = TRUE),
+    pal_sales = mean(pal_sales_ratio, na.rm = TRUE),
+    game_count = n(),
+    high_score_ratio = mean(High_Score, na.rm = TRUE)
+  ) %>%
+  arrange(release_year) 
+
+df_time_series_filtered <- df_time_series %>%
+  filter(release_year >= 2000)
+
+nrow(df_time_series_filtered)
+```
+
+$$
+\mathrm{total\_sales} = \beta_0 + \beta_1 \cdot \mathrm{mean\_score} + \beta_2 \cdot \mathrm{release\_year} + \varepsilon
+$$
+
+Y: dependent variable
+
+X1,X2,X3,…: independent variables: mean_score, and release_year.
+
+β0​: intercept
+
+β1,β2,β3,…: coefficients of the independent variables.
+
+ε: residual
+
+```{r}
+lm_model <- lm(total_sales ~ mean_score + release_year, data = df_time_series_filtered)
+summary(lm_model)
+
+residuals_model <- resid(lm_model)
+shapiro.test(residuals_model)
+```
+
+```{r}
+library(car)
+vif_values <- vif(lm_model)
+print(vif_values)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(lm_model)
+```
+
+```{r}
+res_fit <- ts(residuals(lm_model), start = c(2000, 1), frequency = 1)
+
+library(tseries)
+adf_test <- adf.test(res_fit)
+print(adf_test)
+
+```
+
+## Logistic Regression
+## Remove outliers
+
+```{r}
+library(dplyr)
+
+df_cleaned <- df %>%
+  filter(
+    na_sales_ratio > 0.05 & na_sales_ratio < 0.95,
+    jp_sales_ratio > 0.05 & jp_sales_ratio < 0.95,
+    pal_sales_ratio > 0.05 & pal_sales_ratio < 0.95,
+    other_sales_ratio > 0.05 & other_sales_ratio < 0.95
+  )
+
+summary(df_cleaned)
+```
+
+$$
+\mathrm{logit}(\mathrm{P(High\_Score = 1)}) = \beta_0 + \beta_1 \cdot \mathrm{normalized\_annual\_sales} + 
+\beta_2 \cdot \mathrm{genreOther} + 
+\beta_3 \cdot \mathrm{genreRacing} + 
+\beta_4 \cdot \mathrm{genreRole\text{-}Playing} + 
+\beta_5 \cdot \mathrm{genreShooter} + 
+\beta_6 \cdot \mathrm{genreSports} + 
+\beta_7 \cdot \mathrm{na\_sales\_ratio} + 
+\beta_8 \cdot \mathrm{jp\_sales\_ratio} + 
+\beta_9 \cdot \mathrm{pal\_sales\_ratio} + 
+\beta_{10} \cdot \mathrm{other\_sales\_ratio}
+$$
+
+logit(P): log-odds of the probability P
+P: The probability of the target event occurring
+X1​,X2​,X3​,…: independent variables
+β0​: The intercept, representing the log-odds when all predictors are zero.
+β1,β2,β3,…: coefficients of the independent variables
+
+```{r}
+logit_model <- glm(
+  High_Score ~  normalized_annual_sales + genre + na_sales_ratio+jp_sales_ratio+pal_sales_ratio+other_sales_ratio,
+  data = df,
+  family = "binomial"
+)
+
+summary(logit_model)
+```
+
+## Performance
+### ROC & AUC
+
+```{r}
+library(pROC)
+
+# logit_model <- glm(High_Score ~ ., data = df, family = binomial)
+roc_curve <- roc(df$High_Score, predict(logit_model, type = "response"))
+
+
+plot(roc_curve, col = "white", lwd = 2, legacy.axes = TRUE)
+
+auc_value <- auc(roc_curve)
+print(paste("AUC:", auc_value))
+
+```
