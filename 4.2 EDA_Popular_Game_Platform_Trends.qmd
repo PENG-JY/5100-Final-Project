@@ -1,0 +1,399 @@
+---
+title: "EDA_Popular Game Platform Trends"
+format: html
+---
+
+```{r}
+# import needed libraries
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(wordcloud)
+library(wordcloud2)
+library(grid)
+library(viridis)
+
+# read in data
+df <- read.csv("data/cleaned_game.csv")
+```
+
+# Popular Game Platform Trends
+
+## Explore the changing popularity of gaming platforms over time.
+Since there are so many console types, I will first choose the first ten consoles that have the most number of released games
+```{r}
+# extract the required attributes
+df_2 <- df |> select(console,release_date)
+
+# check if there are any NA rows
+colSums(is.na(df_2))
+
+# drop NA
+df_2 <- na.omit(df_2)
+
+# transform date 
+df_2$release_date <- as.Date(df_2$release_date, format="%Y-%m-%d")
+df_2$release_y <- format(df_2$release_date, "%Y")
+
+# count the numbers based on the released dates and consoles 
+console_release_count <- df_2 |> group_by(console) |> summarise(release_count = n(), .groups = "drop") |> arrange(desc(release_count))
+
+# fetch the top ten consoles and try to show their changing pattern of the number of the released games with released year
+top_10_consoles <- head(console_release_count, 10)
+top_10_consoles <- df_2 |> filter(console %in% top_10_consoles$console)
+trend_data <- top_10_consoles |> group_by(console, release_y) |> summarise(release_count = n(), .groups = "drop")
+
+trend_data <- trend_data |> filter(release_y >= 1995 & release_y <= 2019)
+print(trend_data)
+
+# plot the heatmap
+heatmap_data <- trend_data |> pivot_wider(names_from = console, values_from = release_count, values_fill = 0)
+heatmap_data_long <- pivot_longer(heatmap_data, cols = -release_y, names_to = "console", values_to = "count")
+heatmap_data_long |> ggplot(aes(x = release_y, y = console, fill = count)) +
+                     geom_tile(color = "grey70")+
+                     scale_fill_gradient(low = "white", high = "blue") +
+                     labs(title = "Top 10 Game Consoles: Released Games Over Years (1995-2018)",
+                          x = "Release Year",
+                          y = "Consoles",
+                          fill = "Number of Games") +
+                     theme_minimal()+
+                     theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+
+# save the plot
+ggsave("Console_release_games.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300)
+```
+
+Due to the large number of console types in the dataset, which makes the resulting plot difficult to interpret, I will group all consoles into broader console systems for a more cohesive analysis.
+```{r}
+# extract the required attributes
+df_1 <- df |> select(console,release_date)
+
+# check if there are any NA rows
+colSums(is.na(df_1))
+
+# drop NA
+df_1 <- na.omit(df_1)
+
+# transform consoles
+df_1 <- df_1 |> mutate(console_series = case_when(console %in% c("PS", "PS2", "PS3", "PS4", "PS5") ~ "PlayStation",
+                                                  console %in% c("XB", "X360", "XBL", "XOne") ~ "Xbox",
+                                                  console %in% c("Wii", "WiiU", "NS") ~ "Nintendo",
+                                                  console %in% c("DS", "3DS", "GB", "GBA", "GBC") ~ "Nintendo Handheld",
+                                                  console %in% c("PSP", "PSV") ~ "PlayStation Handheld",
+                                                  console %in% c("GEN", "SAT", "SNES", "DC") ~ "Sega",
+                                                  console %in% c("PC") ~ "PC",
+                                                  TRUE ~ "Other"))
+
+# transform date 
+df_1$release_date <- as.Date(df_1$release_date, format="%Y-%m-%d")
+df_1$release_y <- format(df_1$release_date, "%Y")
+
+# plot the heatmap
+year_count <- df_1 |> group_by(console_series, release_y) |> summarise(release_count = n(), .groups = "drop")
+year_count <- year_count |> filter(release_y >= 1995 & release_y <= 2019)
+
+heatmap_data <- year_count |> pivot_wider(names_from = console_series, values_from = release_count, values_fill = 0)
+heatmap_data_long <- pivot_longer(heatmap_data, cols = -release_y, names_to = "console", values_to = "count")
+heatmap_data_long |> ggplot(aes(x = release_y, y = console, fill = count)) +
+                     geom_tile(color = "grey70")+
+                     scale_fill_gradient(low = "white", high = "blue") +
+                     labs(title = "Game Console Series: Released Games Over Years (1995-2018)",
+                          x = "Release Year",
+                          y = "Console Series",
+                          fill = "Number of Games") +
+                     theme_minimal()+
+                     theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Console_series_release_games.png", path = "Image_for_Report/Platform", width = 16, height = 13, dpi = 300)
+```
+
+Since the resulting plot is still difficult to interpret, I plan to break it down into two smaller topics:
+1. Comparison of Game Releases Between Nintendo and Sony (Competitive Relationship) with the change of time
+```{r}
+# extract Nintendo data and Sony data
+Nintendo = df_1 |> filter(console_series %in% c("Nintendo Handheld", "Nintendo"))
+Sony = df_1 |> filter(console_series %in% c("PlayStation Handheld", "PlayStation"))
+
+# count the number of released games by two brands
+Nintendo$brand <- "Nintendo"
+Sony$brand <- "Sony"
+year_release_count_Nintendo <- Nintendo |> group_by(release_y, brand) |> summarise(release_count = n(), .groups = "drop") 
+year_release_count_Sony <- Sony |> group_by(release_y, brand) |> summarise(release_count = n(), .groups = "drop") 
+df_plot <- rbind(year_release_count_Nintendo, year_release_count_Sony)
+
+# calculate the mean number of released game
+df_mean <- data.frame(
+        group <- c("Nintendo","Sony"),
+        mean <- c(mean(year_release_count_Nintendo$release_count),mean(year_release_count_Sony$release_count))
+)
+
+# plot the result
+df_plot |> ggplot(aes(x = release_y, y = release_count, color = brand, group = brand)) +
+                        geom_line(size = 1) +  
+                        geom_point(size = 5) +  
+                        geom_hline(data = df_mean, aes(yintercept = mean, color = group), linetype = "dotted", size = 3, alpha = 0.8)+
+                        labs(title = "Released Games Over Years: Sony vs Nintendo",
+                             subtitle = "Number of game releases per year by each brand",
+                             x = "Year",
+                             y = "Number of Releases Per Year",
+                             color = "Brand") +
+                        theme_minimal()+
+                        theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+
+# save the plot
+ggsave("Released Games Over Years：Sony vs Nintendo.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300)
+```
+
+2. Comparison Between PC, Console, and Handheld Platforms with the change of time
+```{r}
+# extract data
+PC = df_1 |> filter(console_series %in% c("PC"))
+Console <- df_1 |> filter(console_series %in% c("Xbox", "PlayStation", "Nintendo"))
+Handheld <- df_1 |> filter(console_series %in% c("PlayStation Handheld", "Nintendo Handheld"))
+
+# count the number of released games by two brands
+PC$platform <- "PC"
+Console$platform <- "Console"
+Handheld$platform <- "Handheld"
+year_release_count_PC <- PC |> group_by(release_y, platform) |> summarise(release_count = n(), .groups = "drop")
+year_release_count_Console <- Console |> group_by(release_y, platform) |> summarise(release_count = n(), .groups = "drop") 
+year_release_count_Handheld <- Handheld |> group_by(release_y, platform) |> summarise(release_count = n(), .groups = "drop") 
+df_plot <- rbind(year_release_count_PC, year_release_count_Console, year_release_count_Handheld)
+
+# calculate the mean number of released game
+df_mean <- data.frame(
+        group <- c("PC","Console", "Handheld"),
+        mean <- c(mean(year_release_count_PC$release_count),mean(year_release_count_Console$release_count), mean(year_release_count_Handheld$release_count))
+)
+
+# plot the result
+df_plot |> ggplot(aes(x = release_y, y = release_count, color = platform, group = platform)) +
+                        geom_line(size = 1) +  
+                        geom_point(size = 5) +  
+                        geom_hline(data = df_mean, aes(yintercept = mean, color = group), linetype = "dotted", size = 3, alpha = 0.8)+
+                        labs(title = "Released Games Over Years: PC vs Consoles vs Handhelds",
+                             subtitle = "Annual number of game releases by platform type",
+                             x = "Release Year",
+                             y = "Number of Releases",
+                             color = "Platform") +
+                        theme_minimal()+
+                        theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+  
+
+# save the plot
+ggsave("Released Games Over Years：PC vs Console vs Handheld.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300)
+```
+
+I will also evaluate the platforms based on sales.
+Plotting based on platforms
+```{r}
+# extract the required attributes
+df_3 <- df |> select(console,release_date, total_sales)
+
+# check if there are any NA rows
+colSums(is.na(df_3))
+
+# drop NA
+df_3 <- na.omit(df_3)
+
+# transform date 
+df_3$release_date <- as.Date(df_3$release_date, format="%Y-%m-%d")
+df_3$release_y <- format(df_3$release_date, "%Y")
+
+# count the numbers based on the released dates and consoles 
+console_sale_count <- df_3 |> group_by(console) |> summarise(release_count = n(), .groups = "drop") |> arrange(desc(release_count))
+
+
+# fetch the top ten consoles and try to show their changing pattern of the number of the released games with released year
+top_10_consoles <- head(console_sale_count, 10)
+top_10_consoles <- df_3 |> filter(console %in% top_10_consoles$console)
+trend_data <- top_10_consoles |> group_by(console, release_y) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop")
+trend_data <- trend_data |> filter(release_y >= 1995 & release_y <= 2019)
+
+
+# plot the heatmap
+heatmap_data <- trend_data |> pivot_wider(names_from = console, values_from = total_sales, values_fill = 0)
+heatmap_data_long <- pivot_longer(heatmap_data, cols = -release_y, names_to = "console", values_to = "count")
+heatmap_data_long |> ggplot(aes(x = release_y, y = console, fill = count)) +
+                     geom_tile(color = "grey70")+
+                     scale_fill_gradient(low = "white", high = "blue") +
+                     labs(title = "Top 10 Game Consoles: Game Sales Over Years (1995-2018)",
+                          x = "Year",
+                          y = "Consoles",
+                          fill = "Sales (in millions)") +
+                     theme_minimal()+
+                     theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Console_sales_games.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300)
+```
+
+Plotting based on the types of the platforms
+```{r}
+# transform consoles
+df_4 <- df_3 |> mutate(console_series = case_when(console %in% c("PS", "PS2", "PS3", "PS4", "PS5") ~ "PlayStation",
+                                                  console %in% c("XB", "X360", "XBL", "XOne") ~ "Xbox",
+                                                  console %in% c("Wii", "WiiU", "NS") ~ "Nintendo",
+                                                  console %in% c("DS", "3DS", "GB", "GBA", "GBC") ~ "Nintendo Handheld",
+                                                  console %in% c("PSP", "PSV") ~ "PlayStation Handheld",
+                                                  console %in% c("GEN", "SAT", "SNES", "DC") ~ "Sega",
+                                                  console %in% c("PC") ~ "PC",
+                                                  TRUE ~ "Other"))
+
+# plot the heatmap
+year_count <- df_4 |> group_by(console_series, release_y) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop")
+year_count <- year_count |> filter(release_y >= 1995 & release_y <= 2019)
+
+heatmap_data <- year_count |> pivot_wider(names_from = console_series, values_from = total_sales, values_fill = 0)
+heatmap_data_long <- pivot_longer(heatmap_data, cols = -release_y, names_to = "console", values_to = "count")
+heatmap_data_long |> ggplot(aes(x = release_y, y = console, fill = count)) +
+                     geom_tile(color = "grey70") +
+                     scale_fill_gradient(low = "white", high = "blue") +
+                     labs(title = "Game Console Series: Game Sales Over Years (1995-2018)",
+                          x = "Year",
+                          y = "Console Series",
+                          fill = "Sales (in millions)") +
+                     theme_minimal()+
+                     theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Console_series_sales_games.png", path = "Image_for_Report/Platform", width = 16, height = 13, dpi = 300)
+```
+
+1. Comparison of Game Sales Between Nintendo and Sony (Competitive Relationship) with the change of time
+```{r}
+# extract Nintendo data and Sony data
+Nintendo = df_4 |> filter(console_series %in% c("Nintendo Handheld", "Nintendo"))
+Sony = df_4 |> filter(console_series %in% c("PlayStation Handheld", "PlayStation"))
+
+# count the number of released games by two brands
+Nintendo$brand <- "Nintendo"
+Sony$brand <- "Sony"
+year_sale_Nintendo <- Nintendo |> group_by(release_y, brand) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop") 
+year_sale_Sony <- Sony |> group_by(release_y, brand) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop") 
+df_plot <- rbind(year_sale_Nintendo, year_sale_Sony)
+
+# calculate the mean number of released game
+df_mean <- data.frame(
+        group <- c("Nintendo","Sony"),
+        mean <- c(mean(year_sale_Nintendo$total_sales),mean(year_sale_Sony$total_sales))
+)
+
+# plot the result
+df_plot |> ggplot(aes(x = release_y, y = total_sales, color = brand, group = brand)) +
+                      geom_line(size = 1) +  
+                      geom_point(size = 5) +  
+                      geom_hline(data = df_mean, aes(yintercept = mean, color = group), linetype = "dotted", size = 3, alpha = 0.8) +
+                      labs(title = "Game Sales Over Years: Sony vs Nintendo",
+                             subtitle = "Number of game sold per year by each brand",
+                             x = "Year",
+                             y = "Number of Sales Per Year (in millions)",
+                             color = "Brand") +
+                      theme_minimal()+
+                      theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+
+# save the plot
+ggsave("Game Sales Over Years：Sony vs Nintendo.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300) 
+```
+
+2. Comparison of Game Sales Between PC, Console, and Handheld Platforms with the change of time
+```{r}
+# extract data
+PC = df_4 |> filter(console_series %in% c("PC"))
+Console <- df_4 |> filter(console_series %in% c("Xbox", "PlayStation", "Nintendo"))
+Handheld <- df_4 |> filter(console_series %in% c("PlayStation Handheld", "Nintendo Handheld"))
+
+# count the number of released games by two brands
+PC$platform <- "PC"
+Console$platform <- "Console"
+Handheld$platform <- "Handheld"
+year_sales_PC <- PC |> group_by(release_y, platform) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop")
+year_sales_Console <- Console |> group_by(release_y, platform) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop") 
+year_sales_Handheld <- Handheld |> group_by(release_y, platform) |> summarise(total_sales = sum(total_sales, na.rm = TRUE), .groups = "drop") 
+df_plot <- rbind(year_sales_PC, year_sales_Console, year_sales_Handheld)
+
+# calculate the mean number of released game
+df_mean <- data.frame(
+        group <- c("PC","Console", "Handheld"),
+        mean <- c(mean(year_sales_PC$total_sales),mean(year_sales_Console$total_sales), mean(year_sales_Handheld$total_sales))
+)
+
+# plot the result
+df_plot |> ggplot(aes(x = release_y, y = total_sales, color = platform, group = platform)) +
+                        geom_line(size = 1) +  
+                        geom_point(size = 5) +  
+                        geom_hline(data = df_mean, aes(yintercept = mean, color = group), linetype = "dotted", size = 3, alpha = 0.8)+
+                        labs(title = "Game Sales Over Years: PC vs Consoles vs Handhelds",
+                             subtitle = "Annual number of game sold by platform type",
+                             x = "Year",
+                             y = "Number of Sales (in millions)",
+                             color = "Platform") +
+                        theme_minimal()+
+                        theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+
+# save the plot
+ggsave("Game Sales Over Years：PC vs Console vs Handheld.png", path = "Image_for_Report/Platform", width = 14, height = 10, dpi = 300)
+
+```

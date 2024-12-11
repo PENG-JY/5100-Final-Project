@@ -1,0 +1,416 @@
+---
+title: "EDA_Regional Game Sales Trends"
+format: html
+---
+```{r}
+webshot::install_phantomjs()
+```
+
+```{r}
+# import needed libraries
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(wordcloud)
+library(wordcloud2)
+library(grid)
+library(viridis)
+library(htmlwidgets)
+
+# read in data
+df <- read.csv("data/cleaned_game.csv")
+```
+
+# Regional Game Sales Trends
+
+## See which games were *disproportionately* popular in different regions. For example, is there a game that was massively popular in Japan but nowhere else
+
+```{r}
+# another way 
+game_popularity <- df |> select('title','genre', 'na_sales', 'jp_sales', 'pal_sales', 'other_sales')
+game_proportions <- game_popularity |> mutate(Total_Sales = na_sales + jp_sales + pal_sales + other_sales) |>
+                                       mutate(NA_Proportion = na_sales / Total_Sales,
+                                              JP_Proportion = jp_sales / Total_Sales,
+                                              PAL_Proportion = pal_sales / Total_Sales,
+                                              Other_Proportion = other_sales / Total_Sales) |>
+                                       select(title, Total_Sales, NA_Proportion, JP_Proportion, PAL_Proportion, Other_Proportion, genre)
+
+game_top_region <- game_proportions |>
+  pivot_longer(
+    cols = c(NA_Proportion, JP_Proportion, PAL_Proportion, Other_Proportion),
+    names_to = "Region",
+    values_to = "Proportion"
+  ) |>
+  group_by(title) |>
+  filter(Proportion == max(Proportion, na.rm = TRUE)) |>
+  ungroup()
+
+print(head(game_top_region))
+
+top_games <- game_top_region |>
+  filter(Proportion > 0.5)
+top_games <- top_games |>
+  mutate(Regional_Sales = Total_Sales * Proportion)
+
+
+print(top_games)
+
+wordcloud_data <- top_games |>
+  select(title, Regional_Sales, Region) |>
+  rename(Word = title, Weight = Regional_Sales, Group = Region)
+
+print(head(wordcloud_data))
+
+# JP
+wordcloud2(wordcloud_data |> filter(Group == "JP_Proportion"), 
+           size = 0.7, color = "random-light", backgroundColor = "black")
+# NA
+wordcloud2(wordcloud_data |> filter(Group == "NA_Proportion"), 
+           size = 0.7, color = "random-light", backgroundColor = "black")
+
+# PAL
+wordcloud2(wordcloud_data |> filter(Group == "PAL_Proportion"), 
+           size = 0.7, color = "random-light", backgroundColor = "black")
+
+
+```
+
+```{r}
+# find the genre distribution of different regions' popular games
+print(top_games)
+
+genre_count <- top_games |>
+  group_by(Region, genre) |>
+  count(name = "Genre_Count") |>
+  ungroup()
+
+print(genre_count)
+
+top_5_genres <- genre_count |>
+  arrange(Region, desc(Genre_Count)) |>  
+  group_by(Region) |>
+  slice_head(n = 5) |>
+  ungroup()
+
+print(top_5_genres)
+
+ggplot(top_5_genres, aes(x = Region, y = genre, size = Genre_Count, color = genre)) +
+  geom_point(alpha = 0.7) +
+  scale_size(range = c(3, 15), guide = guide_legend(override.aes = list(color = "gray"))) +
+  guides(
+    color = guide_legend(override.aes = list(size = 6)))+
+  labs(
+    title = "Top 5 Genres by Game Count in Different Regions",
+    x = "Region",
+    y = "Game Genre",
+    size = "Count of Games",
+    color = "Genre"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Top 5 Genres by Game Count in Different Regions.png", path = "Image_for_Report/Region", width = 14, height = 10, dpi = 300)
+```
+
+
+## Examine game sales dynamics across different regions.
+```{r}
+game_data_clean <- df[!is.na(df$release_date), ]
+game_data_clean$release_date <- as.Date(game_data_clean$release_date, format="%Y-%m-%d")
+game_data_clean$release_y <- format(game_data_clean$release_date, "%Y")
+
+yearly_sales <- game_data_clean |> group_by(release_y) |> summarise(NA_Sales = sum(na_sales, na.rm = TRUE),
+                                                                   JP_Sales = sum(jp_sales, na.rm = TRUE),
+                                                                   PAL_Sales = sum(pal_sales, na.rm = TRUE),
+                                                                   Other_Sales = sum(other_sales, na.rm = TRUE))
+
+yearly_sales_long <- yearly_sales |> pivot_longer(cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales), 
+                                                  names_to = "Region", 
+                                                  values_to = "Sales") 
+yearly_sales_grouped <- yearly_sales_long |> group_by(release_y)
+yearly_sales_proportions <- yearly_sales_grouped |> mutate(Proportion = Sales / sum(Sales) * 100)
+yearly_sales_proportions <- yearly_sales_proportions |> filter(!(release_y %in% c(1989, 1991, 1992, 1993,1994,2020)))
+
+yearly_sales_proportions |> ggplot(aes(x = release_y, y = Proportion, fill = Region)) +
+                     geom_bar(stat = "identity", position = "fill") +
+                     labs(title = "Regional Game Sales Proportion Over Years (1995-2018)", 
+                     x = "Year", 
+                     y = "Proportion (%)") +
+                     theme_minimal() +
+                     scale_fill_brewer(palette = "Set3")+
+                     theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Regional Game Sales Proportion.png", path = "Image_for_Report/Region", width = 14, height = 10, dpi = 300)
+```
+
+## Compare regional preferences for platforms and genres (e.g., action games in  Japan vs. shooters in North America).
+```{r}
+# transform consoles
+df_1 <- df |> mutate(console_series = case_when(console %in% c("PS", "PS2", "PS3", "PS4", "PS5") ~ "PlayStation",
+                                                  console %in% c("XB", "X360", "XBL", "XOne") ~ "Xbox",
+                                                  console %in% c("Wii", "WiiU", "NS") ~ "Nintendo",
+                                                  console %in% c("DS", "3DS", "GB", "GBA", "GBC") ~ "Nintendo Handheld",
+                                                  console %in% c("PSP", "PSV") ~ "PlayStation Handheld",
+                                                  console %in% c("GEN", "SAT", "SNES", "DC") ~ "Sega",
+                                                  console %in% c("PC") ~ "PC",
+                                                  TRUE ~ "Other"))
+df_1$release_date <- as.Date(df_1$release_date, format="%Y-%m-%d")
+df_1$release_y <- format(df_1$release_date, "%Y")
+```
+
+```{r}
+# platform by region-total
+platform_sales <- df_1 |>
+  group_by(console_series) |>
+  summarise(
+    NA_Sales = sum(na_sales, na.rm = TRUE),
+    JP_Sales = sum(jp_sales, na.rm = TRUE),
+    PAL_Sales = sum(pal_sales, na.rm = TRUE),
+    Other_Sales = sum(other_sales, na.rm = TRUE)
+  ) %>%
+  pivot_longer(
+    cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales), 
+    names_to = "Region", 
+    values_to = "Sales"
+  ) %>%
+  group_by(Region) %>%
+  mutate(Proportion = Sales / sum(Sales) * 100)
+
+ggplot(platform_sales, aes(x = Region, y = Proportion, fill = console_series)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(title = "Regional Preferences for Console Series", 
+       x = "Region", 
+       y = "Proportion (%)") +
+  scale_fill_brewer(palette = "Set3")+           
+  theme_minimal()+
+  theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+                          
+# save the plot
+ggsave("Regional Preferences for Console Series.png", path = "Image_for_Report/Region", width = 14, height = 10, dpi = 300)
+```
+
+```{r}
+# platform by region
+platform_yearly_sales <- df_1 |>
+  group_by(release_y, console_series) |>
+  summarise(
+    NA_Sales = sum(na_sales, na.rm = TRUE),
+    JP_Sales = sum(jp_sales, na.rm = TRUE),
+    PAL_Sales = sum(pal_sales, na.rm = TRUE),
+    Other_Sales = sum(other_sales, na.rm = TRUE)
+  )
+
+print(platform_yearly_sales)
+
+platform_yearly_sales_long <- platform_yearly_sales %>%
+  pivot_longer(
+    cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales),
+    names_to = "Region",
+    values_to = "Sales"
+  )
+
+platform_yearly_sales_long <- platform_yearly_sales_long |> filter(release_y >= 1995 & release_y <= 2019)
+
+ggplot(platform_yearly_sales_long, aes(x = release_y, y = Sales, color = console_series, group = console_series)) +
+  geom_line(size = 1) +
+  facet_wrap(~ Region, scales = "free_y") + 
+  labs(
+    title = "Console Series Sales by Year in Different Regions (1995-2018)",
+    x = "Year",
+    y = "Sales (in millions)"
+  ) +
+  scale_x_discrete(
+    breaks = seq(1995, 2015, by = 5))+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set3") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                           axis.title = element_text(size = 12),
+                           axis.text = element_text(size = 10),
+                           axis.text.x = element_text(angle = 45, hjust = 1))
+# save the plot
+ggsave("Console Series by Year in Different Regions", path = "Image_for_Report/Region", width = 10, height = 14, dpi = 300)
+```
+
+```{r}
+# genra by region-total
+genre_sales <- df_1 |>
+  group_by(genre) |>
+  summarise(
+    NA_Sales = sum(na_sales, na.rm = TRUE),
+    JP_Sales = sum(jp_sales, na.rm = TRUE),
+    PAL_Sales = sum(pal_sales, na.rm = TRUE),
+    Other_Sales = sum(other_sales, na.rm = TRUE)
+  ) |>
+  pivot_longer(
+    cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales), 
+    names_to = "Region", 
+    values_to = "Sales"
+  ) |>
+  group_by(Region) |>
+  mutate(Proportion = Sales / sum(Sales) * 100)
+
+print(genre_sales)
+
+ggplot(genre_sales, aes(x = Region, y = Proportion, fill = genre)) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(title = "Regional Preferences for Game Genres", x = "Region", y = "Proportion (%)") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                           axis.title = element_text(size = 12),
+                           axis.text = element_text(size = 10),
+                           axis.text.x = element_text(angle = 45, hjust = 1))
+# save the plot
+ggsave("Regional Preferences for Game Genres.png", path = "Image/Region", width = 8, height = 10, dpi = 300)
+```
+
+```{r}
+# platform by genre
+df_genre <- df %>% select('title', 'na_sales', 'jp_sales', 'pal_sales', 'other_sales', 'genre', 'release_date')
+df_genre$release_date <- as.Date(df_genre$release_date, format="%Y-%m-%d")
+df_genre$release_y <- format(df_genre$release_date, "%Y")
+
+# choose the five most popular genre and the five least populr genre(count)
+genre_counts <- df_genre |>
+  group_by(genre) |>
+  summarise(count = n()) |>
+  arrange(desc(count))
+
+top_genres <- genre_counts |>
+  slice_head(n = 5) |>
+  pull(genre)  
+
+bottom_genres <- genre_counts |>
+  slice_tail(n = 5) |>
+  pull(genre)  
+
+top_genre_df <- df_genre |>
+  filter(genre %in% top_genres)
+
+top_genre_df <- na.omit(top_genre_df)
+
+bottom_genre_df <- df_genre |>
+  filter(genre %in% bottom_genres)
+
+
+print(head(top_genre_df))
+print(tail(top_genre_df))
+
+top_genre_yearly_sales <- top_genre_df |>
+  group_by(release_y, genre) |>
+  summarise(
+    NA_Sales = sum(na_sales, na.rm = TRUE),
+    JP_Sales = sum(jp_sales, na.rm = TRUE),
+    PAL_Sales = sum(pal_sales, na.rm = TRUE),
+    Other_Sales = sum(other_sales, na.rm = TRUE)
+  )
+
+top_genre_yearly_sales_long <- top_genre_yearly_sales |>
+  pivot_longer(
+    cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales),
+    names_to = "Region",
+    values_to = "Sales"
+  )
+
+top_genre_yearly_sales_long <- top_genre_yearly_sales_long |> filter(release_y >= 1995 & release_y <= 2019) 
+top_genre_yearly_sales_long$release_y <- as.numeric(top_genre_yearly_sales_long$release_y)
+print(head(top_genre_yearly_sales_long))
+
+df_grouped <- top_genre_yearly_sales_long |> mutate(Year_Group = cut(release_y,breaks = seq(1995, 2019, by = 3), include.lowest = TRUE, right = FALSE, labels = FALSE)) |> group_by(Year_Group, genre, Region) |>
+                            summarise(Total_Sales = sum(Sales, na.rm = TRUE)) |>
+                            ungroup()|>
+                            mutate(Year_Label = paste0(1996 + (Year_Group - 1) * 3))
+
+print(head(df_grouped))
+
+ggplot(df_grouped, aes(x = Year_Label, y = Total_Sales, color = genre, group = genre)) +
+  geom_line(size = 1) +
+  geom_point(size = 5) +
+  facet_wrap(~ Region, scales = "free_y") +  
+  labs(title = "Top Genre Sales by Year in Different Regions",
+       x = "Year",
+       y = "Sales (in millions)",
+       color = "Genre"
+  ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set3")+
+  theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+                           strip.text = element_text(color = "black", size = 20, face = "bold"),
+                           axis.title = element_text(color = "black",size = 25, face = "bold"),
+                           axis.text = element_text(color = "black",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "black", size = 20,face = "bold"),
+                           legend.text = element_text(color = "black", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "white"), 
+                           plot.background = element_rect(fill = "white"), 
+                           legend.background = element_rect(fill = "white") )
+# save the plot
+ggsave("Top 5 Genre Sales by Year in Different Regions.png", path = "Image_for_Report/Region", width = 14, height = 10, dpi = 300)
+```
+
+```{r}
+bottom_genre_yearly_sales <- bottom_genre_df |>
+  group_by(release_y, genre) |>
+  summarise(
+    NA_Sales = sum(na_sales, na.rm = TRUE),
+    JP_Sales = sum(jp_sales, na.rm = TRUE),
+    PAL_Sales = sum(pal_sales, na.rm = TRUE),
+    Other_Sales = sum(other_sales, na.rm = TRUE)
+  )
+
+bottom_genre_yearly_sales_long <- bottom_genre_yearly_sales |>
+  pivot_longer(
+    cols = c(NA_Sales, JP_Sales, PAL_Sales, Other_Sales),
+    names_to = "Region",
+    values_to = "Sales"
+  )
+
+
+ggplot(bottom_genre_yearly_sales_long, aes(x = release_y, y = Sales, color = genre, group = genre)) +
+  geom_line(size = 1) +
+  facet_wrap(~ Region, scales = "free_y", labeller =  Region) +  
+  labs(
+    title = "Bottom 5 Genre Sales by Year in Different Regions",
+    x = "Year",
+    y = "Sales (in millions)"
+  ) +
+  scale_x_discrete(breaks = seq(1995, 2015, by = 5))+
+  theme_minimal() +
+  scale_color_brewer(palette = "Set3")+
+  theme(plot.title = element_text(color = "white",hjust = 0.5, size = 25, face = "bold"),
+                           axis.title = element_text(color = "white",size = 25, face = "bold"),
+                           axis.text = element_text(color = "white",size = 20, face = "bold"),
+                           axis.text.x = element_text(color = "white",angle = 45, hjust = 1),
+                           legend.title = element_text(color = "white", size = 20,face = "bold"),
+                           legend.text = element_text(color = "white", size = 20,face = "bold"),
+                           panel.background = element_rect(fill = "black"), 
+                           plot.background = element_rect(fill = "black"), 
+                           legend.background = element_rect(fill = "black") )
+# save the plot
+ggsave("Bottom 5 Genre Sales by Year in Different Regions.png", path = "Image/Region", width = 14, height = 10, dpi = 300)
+```
+
+

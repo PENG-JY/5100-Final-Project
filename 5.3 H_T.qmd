@@ -1,0 +1,50 @@
+---
+title: "Hypothesis Test"
+format: html
+---
+
+# Does the developer's "fame" significantly impact game ratings?
+
+Null Hypothesis (H₀): The developer's fame does not significantly impact game ratings, meaning there is no difference in ratings between well-known developers and less-known developers.
+
+Alternative Hypothesis (H₁): The developer's fame significantly impacts game ratings, meaning the ratings of games from well-known developers differ from those of less-known developers.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+df <- read.csv("data/developer_category.csv")
+df$developer_category <- gsub("\\.$", "", df$developer_category)
+
+#print(df)
+
+# use boxplot to visualize the distribution of the critic score
+df |> ggplot(aes(x = developer_category, y = critic_score, fill = developer_category)) +
+      geom_boxplot(outlier.size = 4, outlier.shape = 16, outlier.colour = "gray", alpha = 0.7) +
+      labs(title = "Distribution of Critic Scores by Developer Category",
+           x = "Developer Category",
+           y = "Critic Score",
+           color = "Developer Category Level") +
+      theme_minimal() +
+      theme(plot.title = element_text(color = "black",hjust = 0.5, size = 25, face = "bold"),
+            axis.title = element_text(color = "black",size = 25, face = "bold"),
+            axis.text = element_text(color = "black",size = 20, face = "bold"),
+            axis.text.x = element_text(color = "black",angle = 45, hjust = 1),
+            panel.background = element_rect(fill = "white"), 
+            plot.background = element_rect(fill = "white"), 
+            legend.background = element_rect(fill = "white"))
+  
+# save the plot
+ggsave("box_plot.png", path = "Image_for_Report/H_T", width = 15, height = 15, dpi = 300)
+```
+```{r}
+# use ANOVA
+anova_result <- aov(critic_score ~ developer_category, data = df)
+summary(anova_result)
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+png("Tukey_HSD_Plot.png", width = 800, height = 300)
+par(mar = c(5, 15, 4, 2))
+plot(tukey_result, las = 1, cex.axis = 0.8)
+dev.off()
+```
